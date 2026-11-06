@@ -33,3 +33,6 @@ header>.tiny{margin-right:65px}.music-control{position:fixed;right:4%;top:22px;z
 .hero>.hero-cover{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:55% center;z-index:-2;filter:brightness(.72) saturate(.65)}
 .hero>video{opacity:0}.hero.video-ready>video{opacity:1}
 @media(max-width:600px){.hero{height:100svh;min-height:620px}.hero-bottom{bottom:max(24px,env(safe-area-inset-bottom))}.grain{display:none}}
+
+/* Keep the first screen steady while mobile browser chrome collapses. */
+@media(max-width:760px){.hero{height:var(--hero-height,100svh);max-height:none;min-height:620px}}

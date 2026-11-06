@@ -6,16 +6,29 @@ const $=s=>document.querySelector(s),archive=$('#archive'),artwork=$('#artwork')
 let motionOff=matchMedia('(prefers-reduced-motion: reduce)').matches,galleryStopped=false,hovered=false,dragging=false,galleryVisible=false,lastInteraction=0,heroUserPaused=false,activeCat=null,lastFocus=null;
 function syncBody(){document.body.style.overflow=archive.open||artwork.open?'hidden':'';mountMusicControl()}
 let archivePaused=false,archiveLanes=[];
-// Only request pictures when their cards approach the visible, clipped viewport.
-const pictureObserver=new IntersectionObserver(entries=>{for(const entry of entries){if(!entry.isIntersecting)continue;const img=entry.target;img.src=img.dataset.src;img.removeAttribute('data-src');pictureObserver.unobserve(img)}},{rootMargin:'180px',threshold:0});
-function observePictures(root){root.querySelectorAll('img[data-src]').forEach(img=>pictureObserver.observe(img))}
-function releasePictures(root){root.querySelectorAll('img[data-src]').forEach(img=>pictureObserver.unobserve(img))}
+// Thumbnails use a bounded queue so video/audio do not compete with dozens of originals.
+const thumbnail=file=>asset('thumbs/'+file.replace(/\.[^.]+$/,'.jpg'));
+const pictureQueue=[];const queuedPictures=new WeakSet();let picturesLoading=0;
+function pumpPictures(){while(picturesLoading<3&&pictureQueue.length){const img=pictureQueue.shift();queuedPictures.delete(img);if(!img.isConnected||!img.dataset.src)continue;const source=img.dataset.src;delete img.dataset.src;picturesLoading++;img.loading='eager';let attempt=0,timer,finished=false;
+ const finish=()=>{if(finished)return;finished=true;clearTimeout(timer);img.onload=img.onerror=null;picturesLoading--;pumpPictures()};
+ const request=()=>{clearTimeout(timer);img.onload=()=>{img.classList.remove('load-failed');finish()};img.onerror=()=>{clearTimeout(timer);if(attempt++<2&&img.isConnected){timer=setTimeout(request,attempt*1000)}else{img.dataset.src=source;img.classList.add('load-failed');finish()}};img.src=source+(attempt?'?retry='+attempt:'');timer=setTimeout(()=>img.onerror?.(),15000)};request();}}
+function queuePicture(img){if(queuedPictures.has(img)||!img.dataset.src)return;queuedPictures.add(img);pictureQueue.push(img);pumpPictures()}
+const pictureObserver=typeof IntersectionObserver==='function'?new IntersectionObserver(entries=>{for(const e of entries)if(e.isIntersecting){pictureObserver.unobserve(e.target);queuePicture(e.target)}},{rootMargin:'240px',threshold:0}):null;
+function observePictures(root){root.querySelectorAll('img[data-src]').forEach(img=>pictureObserver?pictureObserver.observe(img):queuePicture(img))}
+function releasePictures(root){root.querySelectorAll('img[data-src]').forEach(img=>pictureObserver?.unobserve(img))}
+function retryPictures(){document.querySelectorAll('img.load-failed[data-src]').forEach(img=>{img.classList.remove('load-failed');pictureObserver?pictureObserver.observe(img):queuePicture(img)})}
+window.addEventListener('online',retryPictures);
+// Ignore address-bar height changes. Only a width change or rotation resets the hero.
+let heroWidth=innerWidth;
+function lockHeroHeight(){document.documentElement.style.setProperty('--hero-height',innerHeight+'px')}
+lockHeroHeight();window.addEventListener('resize',()=>{if(Math.abs(innerWidth-heroWidth)>40){heroWidth=innerWidth;lockHeroHeight()}});
+window.addEventListener('orientationchange',()=>setTimeout(()=>{heroWidth=innerWidth;lockHeroHeight()},300));
 
-function archiveCard(w,clone=false){return `<button class="archive-item ${w.imageOnly?'image-only':''} ${w.video?'film-card':''}" style="${w.imageOnly?`--image-ratio:${w.width/w.height}`:''}" data-work="${w.id}" aria-label="${w.video?`播放视频：${w.name}`:w.imageOnly?'放大图片':w.name}" ${clone?'tabindex="-1" aria-hidden="true"':''}><div class="archive-image"><img data-src="${asset(w.file)}" alt="${w.imageOnly?'作品图片':w.name}" loading="lazy" decoding="async" ${w.width?`width="${w.width}" height="${w.height}"`:''} draggable="false"><span>${w.video?'▷':'↗'}</span></div>${w.imageOnly?'':`<h3>${w.name}</h3><p>${w.en}</p>`}</button>`}
+function archiveCard(w,clone=false){return `<button class="archive-item ${w.imageOnly?'image-only':''} ${w.video?'film-card':''}" style="${w.imageOnly?`--image-ratio:${w.width/w.height}`:''}" data-work="${w.id}" aria-label="${w.video?`播放视频：${w.name}`:w.imageOnly?'放大图片':w.name}" ${clone?'tabindex="-1" aria-hidden="true"':''}><div class="archive-image"><img data-src="${thumbnail(w.file)}" alt="${w.imageOnly?'作品图片':w.name}" loading="eager" decoding="async" ${w.width?`width="${w.width}" height="${w.height}"`:''} draggable="false"><span>${w.video?'▷':'↗'}</span></div>${w.imageOnly?'':`<h3>${w.name}</h3><p>${w.en}</p>`}</button>`}
 function openArchive(key){releasePictures(archive);archiveLanes.forEach(l=>l.destroy());archiveLanes=[];activeCat=key;archivePaused=false;const c=cats[key],flow=key==='models'||key==='garments';archive.classList.toggle('flow-archive',flow);$('#archive-title').textContent=c.name;$('#archive-kicker').textContent=c.en;$('#archive-note').textContent=c.note;$('#archive-controls').hidden=!flow;$('#archive-pause').textContent='暂停流动 II';$('#archive-pause').setAttribute('aria-pressed','false');const items=c.items.map(id=>works.find(a=>a.id===id)),grid=$('#archive-grid');grid.className=flow?'vertical-flow':'';grid.innerHTML=flow?[0,1].map(n=>`<div class="flow-lane vertical-lane" tabindex="0" aria-label="${n?'右列向上':'左列向下'}流动作品，可拖动浏览"><div class="flow-track"><div class="flow-group">${items.filter((w,i)=>i%2===n).map(w=>archiveCard(w)).join('')}</div></div></div>`).join(''):items.map(w=>archiveCard(w)).join('');archive.showModal();archive.scrollTop=0;syncBody();if(flow)archiveLanes=[...grid.children].map((el,i)=>new FlowLane(el,'y',i?1:-1,19,()=>archivePaused||!archive.open||artwork.open));observePictures(grid);}
 function closeArchive(){archive.close();syncBody()}
 $('#archive-pause').onclick=()=>{archivePaused=!archivePaused;$('#archive-pause').textContent=archivePaused?'继续流动 ▷':'暂停流动 II';$('#archive-pause').setAttribute('aria-pressed',String(archivePaused))};
-function openWork(id){hero.pause();bgm.pause();const w=works.find(a=>a.id===id);lastFocus=document.activeElement;artwork.classList.toggle('image-viewer',!!w.imageOnly);artwork.classList.toggle('wide-video-viewer',w.id==='film-4');artwork.classList.remove('actual-size');$('#image-size').hidden=!w.imageOnly;$('#image-size').textContent='原尺寸 ↗';$('#artwork-body').innerHTML=w.imageOnly?`<h2 id="artwork-title" class="sr-only">作品图片</h2><div class="image-stage"><img src="${asset(w.file)}" alt="作品图片" width="${w.width}" height="${w.height}" decoding="async"></div>`:`${w.video?`<video id="detail-video" src="${asset(w.videoFile)}" poster="${asset(w.file)}" controls autoplay playsinline preload="metadata"></video>`:`<img src="${asset(w.file)}" alt="${w.name}">`}<div class="artwork-text"><span class="mono">${w.kind}</span><h2 id="artwork-title">${w.name}</h2><p>${w.description||''}</p><div class="artwork-facts"><span>${w.palette||''}</span><span>${w.en}</span></div><a href="${asset(w.video?w.videoFile:w.file)}" target="_blank" rel="noopener">${w.video?'打开完整影像':'查看完整作品'} ↗</a></div>`;artwork.showModal();artwork.scrollTop=0;syncBody();syncBackgroundMusic()}
+function openWork(id){const w=works.find(a=>a.id===id);if(!w)return;hero.pause();if(w.video)bgm.pause();lastFocus=document.activeElement;artwork.classList.toggle('image-viewer',!!w.imageOnly);artwork.classList.toggle('wide-video-viewer',!!w.video);artwork.classList.remove('actual-size');$('#image-size').hidden=!w.imageOnly;$('#image-size').textContent='原尺寸 ↗';$('#artwork-body').innerHTML=w.imageOnly?`<h2 id="artwork-title" class="sr-only">作品图片</h2><div class="image-stage"><img src="${asset(w.file)}" alt="作品图片" width="${w.width}" height="${w.height}" decoding="async"></div>`:`${w.video?`<video id="detail-video" src="${asset(w.videoFile)}" poster="${asset(w.file)}" controls autoplay playsinline preload="metadata"></video>`:`<img src="${asset(w.file)}" alt="${w.name}">`}<div class="artwork-text"><span class="mono">${w.kind}</span><h2 id="artwork-title">${w.name}</h2><p>${w.description||''}</p><div class="artwork-facts"><span>${w.palette||''}</span><span>${w.en}</span></div><a href="${asset(w.video?w.videoFile:w.file)}" target="_blank" rel="noopener">${w.video?'打开完整影像':'查看完整作品'} ↗</a></div>`;artwork.showModal();artwork.scrollTop=0;syncBody();syncBackgroundMusic()}
 $('#image-size').onclick=()=>{artwork.classList.toggle('actual-size');$('#image-size').textContent=artwork.classList.contains('actual-size')?'适应屏幕 ↙':'原尺寸 ↗'};
 function closeWork(){const v=$('#detail-video');if(v)v.pause();artwork.close();$('#artwork-body').innerHTML='';syncBody();syncHero();syncBackgroundMusic();lastFocus?.focus({preventScroll:true})}
 document.querySelectorAll('[data-cat]').forEach(b=>b.onclick=()=>openArchive(b.dataset.cat));$('#close-archive').onclick=closeArchive;$('#back-index').onclick=e=>{e.preventDefault();closeArchive();$('#collections').scrollIntoView({behavior:motionOff?'auto':'smooth'})};$('#close-artwork').onclick=closeWork;$('#archive-grid').onclick=e=>{const b=e.target.closest('[data-work]');if(b&&performance.now()>suppressClickUntil)openWork(b.dataset.work)};artwork.addEventListener('cancel',e=>{e.preventDefault();closeWork()});archive.addEventListener('close',()=>{syncBody();syncHero();syncBackgroundMusic()});artwork.addEventListener('click',e=>{if(e.target===artwork){const r=artwork.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeWork()}});
@@ -27,9 +40,9 @@ class FlowLane{
  tick(dt,now){if(motionOff||this.blocked()||this.hover||this.drag||this.focus||document.hidden||now<this.resumeAt)return;this.offset+=dt*this.speed/1000*this.direction;this.render();}
  destroy(){this.abort.abort();this.resize.disconnect()}
 }
-const exhibitMarkup=(w,i)=>`<button class="exhibit ${w.imageOnly?'individual':''}" data-work="${w.id}" aria-label="${w.imageOnly?'查看完整图片':w.name}"><figure style="margin:0"><img data-src="${asset(w.file)}" alt="${w.imageOnly?'作品图片':w.name}" loading="lazy" decoding="async" draggable="false">${w.imageOnly?'':`<figcaption><div><strong>${w.name}${w.video?' ▷':''}</strong><small>${w.en}</small></div><span>↗</span></figcaption>`}</figure></button>`;
+const exhibitMarkup=(w,i)=>`<button class="exhibit ${w.imageOnly?'individual':''}" data-work="${w.id}" aria-label="${w.imageOnly?'查看完整图片':w.name}"><figure style="margin:0"><img data-src="${thumbnail(w.file)}" alt="${w.imageOnly?'作品图片':w.name}" loading="eager" decoding="async" draggable="false">${w.imageOnly?'':`<figcaption><div><strong>${w.name}${w.video?' ▷':''}</strong><small>${w.en}</small></div><span>↗</span></figcaption>`}</figure></button>`;
 windowGallery.innerHTML=[0,1].map(n=>`<div class="flow-lane horizontal-lane row-${n}" tabindex="0" aria-label="第${n+1}排作品，可横向拖动"><div class="flow-track"><div class="flow-group">${works.filter((w,i)=>i%2===n).map(exhibitMarkup).join('')}</div></div></div>`).join('');
-const museumLanes=[...windowGallery.children].map((el,i)=>new FlowLane(el,'x',i?-1:1,i?23:27,()=>galleryStopped||!galleryVisible||archive.open||artwork.open));museumLanes[1].offset=140;museumLanes[1].render();observePictures(windowGallery);
+const museumLanes=[...windowGallery.children].map((el,i)=>new FlowLane(el,'x',i?-1:1,i?23:27,()=>galleryStopped||!galleryVisible||archive.open||artwork.open));museumLanes[1].offset=140;museumLanes[1].render();observePictures(windowGallery);observePictures(document.querySelector('.category-grid'));
 windowGallery.addEventListener('click',e=>{const b=e.target.closest('[data-work]');if(b&&performance.now()>suppressClickUntil)openWork(b.dataset.work)});
 function step(d){museumLanes.forEach(l=>{l.offset+=d*260;l.resumeAt=performance.now()+2200;l.render()})}$('#previous').onclick=()=>step(-1);$('#next').onclick=()=>step(1);$('#gallery-pause').onclick=()=>{galleryStopped=!galleryStopped;$('#gallery-pause').textContent=galleryStopped?'继续流动 ▷':'暂停流动 II';$('#gallery-pause').setAttribute('aria-pressed',String(galleryStopped))};
 new IntersectionObserver(es=>galleryVisible=es[0].isIntersecting,{threshold:.1}).observe(windowGallery);
@@ -59,9 +72,25 @@ musicButton.onclick=e=>{e.stopPropagation();if(!bgm.paused){musicWanted=false;bg
 bgm.addEventListener('play',paintMusic);bgm.addEventListener('pause',paintMusic);bgm.addEventListener('error',paintMusic);
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('#music-toggle')&&musicWanted&&bgm.paused&&!musicBlocked())syncBackgroundMusic()},{capture:true});
 document.addEventListener('keydown',e=>{if(!e.target.closest('#music-toggle')&&musicWanted&&bgm.paused&&!musicBlocked())syncBackgroundMusic()});
-document.addEventListener('visibilitychange',()=>{syncHero();syncBackgroundMusic()});mountMusicControl();paintMusic();
+document.addEventListener('visibilitychange',()=>{syncHero();syncBackgroundMusic();if(!document.hidden)retryPictures()});mountMusicControl();paintMusic();
 // Give the page and silent hero priority over the soundtrack download.
 window.addEventListener('load',()=>setTimeout(syncBackgroundMusic,1200),{once:true});
 document.addEventListener('WeixinJSBridgeReady',()=>{syncHero();syncBackgroundMusic()},{once:true});
 
 
+
+// Recover from temporary media/network interruptions, without overriding an explicit pause.
+let musicRecoveryTimer=0,musicReloads=0,musicPosition=0,lastMusicTime=0,stalledTicks=0;
+function recoverMusic(reload=false){clearTimeout(musicRecoveryTimer);if(!musicWanted||musicBlocked())return;
+ musicRecoveryTimer=setTimeout(()=>{if(!musicWanted||musicBlocked())return;if(reload&&musicReloads<2){musicReloads++;musicPosition=bgm.currentTime||musicPosition;bgm.load()}syncBackgroundMusic()},1200);
+}
+bgm.addEventListener('loadedmetadata',()=>{if(musicPosition&&musicPosition<bgm.duration){bgm.currentTime=musicPosition;musicPosition=0}});
+bgm.addEventListener('playing',()=>{stalledTicks=0;paintMusic()});
+bgm.addEventListener('timeupdate',()=>{if(bgm.currentTime>lastMusicTime+.5)musicReloads=0});
+for(const type of ['stalled','waiting','pause'])bgm.addEventListener(type,()=>recoverMusic());
+bgm.addEventListener('error',()=>recoverMusic(true));
+bgm.addEventListener('ended',()=>{if(musicWanted&&!musicBlocked()){bgm.currentTime=0;syncBackgroundMusic()}});
+window.addEventListener('online',()=>recoverMusic(true));
+window.addEventListener('pageshow',()=>{syncHero();syncBackgroundMusic();retryPictures()});
+document.addEventListener('touchend',()=>{if(musicWanted&&!musicBlocked()&&bgm.paused)syncBackgroundMusic()},{passive:true});
+setInterval(()=>{if(!musicWanted||musicBlocked()){stalledTicks=0;return}if(bgm.currentTime===lastMusicTime)stalledTicks++;else stalledTicks=0;lastMusicTime=bgm.currentTime;if(stalledTicks>=3){stalledTicks=0;recoverMusic(true)}},5000);
