@@ -28,3 +28,8 @@ header>.tiny{margin-right:65px}.music-control{position:fixed;right:4%;top:22px;z
 
 /* Reserve space before deferred archive pictures arrive. */
 .archive-item img{aspect-ratio:auto 4/3}
+
+/* A real cover stays visible until the browser is rendering video frames. */
+.hero>.hero-cover{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:55% center;z-index:-2;filter:brightness(.72) saturate(.65)}
+.hero>video{opacity:0}.hero.video-ready>video{opacity:1}
+@media(max-width:600px){.hero{height:100svh;min-height:620px}.hero-bottom{bottom:max(24px,env(safe-area-inset-bottom))}.grain{display:none}}
