@@ -36,3 +36,13 @@ header>.tiny{margin-right:65px}.music-control{position:fixed;right:4%;top:22px;z
 
 /* Keep the first screen steady while mobile browser chrome collapses. */
 @media(max-width:760px){.hero{height:var(--hero-height,100svh);max-height:none;min-height:620px}}
+
+/* Crisp, neutral line icons stay consistent on iOS and never become emoji. */
+.work-open-icon{display:grid!important;place-items:center;border-radius:50%;background:rgba(245,245,239,.9)!important;color:#222!important;width:26px!important;height:26px!important;box-shadow:0 0 0 1px #2221;font-size:10px!important}
+.work-open-icon svg,.inline-open-icon svg,.category-arrow svg{display:block;width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.work-open-icon.video-label{border-radius:2px;width:auto!important;min-width:34px;padding:0 6px;font-size:10px!important;letter-spacing:1px}
+.inline-open-icon{display:inline-flex;vertical-align:middle;margin-left:5px}
+.category-arrow svg{width:25px;height:25px}
+.play-symbol.film-wordmark{font:14px/1 Arial,sans-serif;letter-spacing:3px;top:48%;left:40%}
+.video-status{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;background:#181b18;color:#cdd1ca;font-size:11px;line-height:1.6}
+.video-status[hidden]{display:none}.video-status button{border-bottom:1px solid currentColor;white-space:nowrap;font-size:11px;padding:0 0 2px;color:#fff}
