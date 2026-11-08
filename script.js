@@ -25,14 +25,14 @@ function pumpPictures(){while(picturesLoading<3&&pictureQueue.length){
  const request=()=>{clearTimeout(timer);const current=attempt;
   const fail=()=>{if(finished||current!==attempt)return;img.onload=img.onerror=null;clearTimeout(timer);if(img.isConnected&&attempt<2){attempt++;request()}else{img.dataset.src=source;img.classList.add('load-failed');finish()}};
   img.onload=()=>{if(finished||current!==attempt)return;img.classList.remove('load-failed');finish()};img.onerror=fail;
-  img.src=attempt===2?originalPicture(source):attempt?retryURL(source,attempt):source;timer=setTimeout(fail,8000);
+  img.src=source.startsWith('data:')?source:attempt===2?originalPicture(source):attempt?retryURL(source,attempt):source;timer=setTimeout(fail,8000);
  };request();
 }}
 function queuePicture(img){if(queuedPictures.has(img)||!img.dataset.src)return;queuedPictures.add(img);pictureQueue.push(img);pumpPictures()}
 const pictureObserver=typeof IntersectionObserver==='function'?new IntersectionObserver(entries=>{for(const e of entries)if(e.isIntersecting){pictureObserver.unobserve(e.target);queuePicture(e.target)}},{rootMargin:'240px',threshold:0}):null;
 function observePictures(root){root.querySelectorAll('img[data-src]').forEach(img=>{const r=img.getBoundingClientRect(),lane=img.closest('.flow-lane'),clip=lane?.getBoundingClientRect();const visible=r.width>0&&r.height>0&&r.bottom>0&&r.top<innerHeight+100&&r.right>0&&r.left<innerWidth+100&&(!clip||(r.bottom>clip.top&&r.top<clip.bottom&&r.right>clip.left&&r.left<clip.right));if(visible||!pictureObserver)queuePicture(img);else pictureObserver.observe(img)})}
 const warmedPreviews=new Map();
-function warmCategory(key){const ids=cats[key].items;[...ids.slice(0,2),...ids.slice(-2)].forEach(id=>{const url=thumbnail(works.find(w=>w.id===id).file);if(warmedPreviews.has(url))return;const image=new Image();image.decoding='async';image.fetchPriority='low';image.src=url;warmedPreviews.set(url,image)})}
+function warmCategory(key){const ids=cats[key].items;[...ids.slice(0,2),...ids.slice(-2)].forEach(id=>{const url=thumbnail(works.find(w=>w.id===id).file);if(url.startsWith('data:'))return;if(warmedPreviews.has(url))return;const image=new Image();image.decoding='async';image.fetchPriority='low';image.src=url;warmedPreviews.set(url,image)})}
 
 function releasePictures(root){root.querySelectorAll('img[data-src]').forEach(img=>pictureObserver?.unobserve(img))}
 function retryPictures(){document.querySelectorAll('img.load-failed[data-src]').forEach(img=>{img.classList.remove('load-failed');pictureObserver?pictureObserver.observe(img):queuePicture(img)})}
@@ -106,17 +106,34 @@ let lastTime=0;
 function animate(now){
  requestAnimationFrame(animate);const dt=Math.min(now-lastTime,60);lastTime=now;
  if(document.hidden||motionOff||now<scrollResumeAt)return;
- museumLanes.forEach(l=>l.tick(dt,now));archiveLanes.forEach(l=>l.tick(dt,now));
+ if(galleryVisible&&!archive.open&&!artwork.open)museumLanes.forEach(l=>l.tick(dt,now));
+ if(archive.open&&!artwork.open&&!archivePaused)archiveLanes.forEach(l=>l.tick(dt,now));
 }requestAnimationFrame(animate);
 const navLinks=[...document.querySelectorAll('header nav a')];const sectionObserver=new IntersectionObserver(entries=>{for(const e of entries)if(e.isIntersecting)navLinks.forEach(a=>a.setAttribute('aria-current',a.hash==='#'+e.target.id?'location':'false'))},{rootMargin:'-20% 0px -50% 0px'});['collections','museum','about'].forEach(id=>sectionObserver.observe(document.getElementById(id)));
 
 // Low-volume looping soundtrack; explicit pause is respected throughout the site.
 const bgm=$('#background-music'),musicButton=$('#music-toggle');let musicWanted=true;
 bgm.volume=.16;
+let musicBufferReady=false,musicBufferPromise=null,musicObjectURL=null;
+function prepareMusic(){
+ if(musicBufferPromise)return;
+ musicBufferPromise=(async()=>{
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),25000);
+  try{
+   const response=await fetch(asset('background-music-mobile.mp3'),{cache:'force-cache',signal:controller.signal});
+   if(!response.ok)throw Error('audio download failed');
+   const blob=await response.blob();if(blob.size<1000)throw Error('empty audio');
+   if(musicObjectURL)URL.revokeObjectURL(musicObjectURL);
+   musicObjectURL=URL.createObjectURL(blob);bgm.src=musicObjectURL;
+  }catch{bgm.src=asset('background-music-mobile.mp3')}
+  finally{clearTimeout(timeout);musicBufferReady=true;syncBackgroundMusic()}
+ })();
+}
+
 function mountMusicControl(){const host=artwork.open?$('.artwork-bar'):archive.open?$('.archive-header'):document.body;if(musicButton.parentElement!==host){if(host===document.body)host.append(musicButton);else host.insertBefore(musicButton,host.querySelector('[aria-label^="关闭"]'))}musicButton.classList.toggle('in-dialog',host!==document.body)}
 function musicBlocked(){return document.hidden||!!$('#detail-video')||!hero.muted}
 function paintMusic(){const playing=!bgm.paused;musicButton.classList.toggle('playing',playing);musicButton.setAttribute('aria-pressed',String(playing));const text=playing?'背景音乐：播放中，点击暂停':!musicWanted?'背景音乐：已暂停，点击播放':musicBlocked()?'背景音乐：暂时暂停':'背景音乐：点击播放';musicButton.setAttribute('aria-label',text);musicButton.title=text;musicButton.querySelector('.music-state').textContent=playing?'II':'▷'}
-function syncBackgroundMusic(){if(!musicWanted||musicBlocked()){bgm.pause();paintMusic();return}const attempt=bgm.play();if(attempt)attempt.then(paintMusic).catch(paintMusic)}
+function syncBackgroundMusic(){if(!musicWanted||musicBlocked()){bgm.pause();paintMusic();return}if(!musicBufferReady){prepareMusic();paintMusic();return}const attempt=bgm.play();if(attempt)attempt.then(paintMusic).catch(paintMusic)}
 musicButton.onclick=e=>{e.stopPropagation();if(!bgm.paused){musicWanted=false;bgm.pause();paintMusic()}else{musicWanted=true;if(!hero.muted){hero.muted=true;$('#sound').textContent='静音 ◌';$('#sound').setAttribute('aria-pressed','false')}syncBackgroundMusic()}};
 bgm.addEventListener('play',paintMusic);bgm.addEventListener('pause',paintMusic);bgm.addEventListener('error',paintMusic);
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('#music-toggle')&&musicWanted&&bgm.paused&&!musicBlocked())syncBackgroundMusic()},{capture:true});
@@ -136,7 +153,7 @@ document.addEventListener('WeixinJSBridgeReady',()=>{syncHero();syncBackgroundMu
 // Recover from temporary media/network interruptions, without overriding an explicit pause.
 let musicRecoveryTimer=0,musicReloads=0,musicPosition=0,lastMusicTime=0,stalledTicks=0;
 function recoverMusic(reload=false){clearTimeout(musicRecoveryTimer);if(!musicWanted||musicBlocked())return;
- musicRecoveryTimer=setTimeout(()=>{if(!musicWanted||musicBlocked())return;if(reload&&musicReloads<2){musicReloads++;musicPosition=bgm.currentTime||musicPosition;bgm.src=retryURL(asset('background-music-mobile.mp3'),musicReloads);bgm.load()}syncBackgroundMusic()},1200);
+ musicRecoveryTimer=setTimeout(()=>{if(!musicWanted||musicBlocked())return;if(reload&&musicReloads<2){musicReloads++;musicPosition=bgm.currentTime||musicPosition;musicBufferReady=false;musicBufferPromise=null;prepareMusic()}syncBackgroundMusic()},1200);
 }
 bgm.addEventListener('loadedmetadata',()=>{if(musicPosition&&musicPosition<bgm.duration){bgm.currentTime=musicPosition;musicPosition=0}});
 bgm.addEventListener('playing',()=>{stalledTicks=0;paintMusic()});
