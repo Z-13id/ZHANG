@@ -60,3 +60,16 @@ header>.tiny{margin-right:65px}.music-control{position:fixed;right:4%;top:22px;z
 /* Five disciplines retain generous two-column cards on phones. */
 @media(min-width:1101px){.category-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.category-img{height:290px}.category-label h3{font-size:16px}}
 .category-grid img{aspect-ratio:3/4;object-fit:cover}
+
+/* The image viewer uses the viewport, never the low-resolution preview's intrinsic size. */
+dialog.image-viewer{width:96vw;max-width:96vw;height:96dvh;max-height:96dvh;box-sizing:border-box;overflow:hidden}
+dialog.image-viewer[open]{display:flex;flex-direction:column}
+.image-viewer .artwork-bar{flex:0 0 auto;width:100%;box-sizing:border-box;min-height:48px;justify-content:flex-end}
+.image-viewer #artwork-body{flex:1;min-height:0;width:100%;position:relative}
+.image-viewer .image-stage{position:relative;width:100%;height:100%;max-width:none;max-height:none;display:flex;align-items:center;justify-content:center;overflow:auto}
+.image-viewer .image-stage img{display:block;width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;flex:none}
+.image-viewer.actual-size .image-stage{display:block}
+.image-viewer.actual-size .image-stage img{width:auto;height:auto;max-width:none;max-height:none;margin:0 auto}
+.image-load-status{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);z-index:2;display:flex;align-items:center;gap:14px;max-width:90%;padding:9px 14px;background:#111e;color:#fff;font-size:12px;line-height:1.5;border:1px solid #555}
+.image-load-status[hidden]{display:none}.image-load-status button{color:#fff;border-bottom:1px solid currentColor;white-space:nowrap}
+@media(max-width:600px){dialog.image-viewer{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;border:0}.image-viewer .artwork-bar{min-height:52px}.image-load-status{font-size:11px}}
