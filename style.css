@@ -50,3 +50,9 @@ header>.tiny{margin-right:65px}.music-control{position:fixed;right:4%;top:22px;z
 
 /* Avoid a full-screen SVG noise filter composited over every moving frame. */
 .grain{display:none}
+
+/* Native pointer and bounded gallery painting for desktop browsers. */
+.cursor,.cursor-echo,.cursor-preview{display:none!important}
+.reading-progress{width:100%;transform:scaleX(0);transform-origin:left}
+.flow-lane{contain:layout paint}
+@media(hover:hover) and (pointer:fine){.horizontal-lane{mask-image:none}.exhibit img{filter:none}.exhibit:hover img{transform:none}.type-stream>div{animation:none}}
