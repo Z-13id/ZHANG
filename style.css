@@ -56,3 +56,7 @@ header>.tiny{margin-right:65px}.music-control{position:fixed;right:4%;top:22px;z
 .reading-progress{width:100%;transform:scaleX(0);transform-origin:left}
 .flow-lane{contain:layout paint}
 @media(hover:hover) and (pointer:fine){.horizontal-lane{mask-image:none}.exhibit img{filter:none}.exhibit:hover img{transform:none}.type-stream>div{animation:none}}
+
+/* Five disciplines retain generous two-column cards on phones. */
+@media(min-width:1101px){.category-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.category-img{height:290px}.category-label h3{font-size:16px}}
+.category-grid img{aspect-ratio:3/4;object-fit:cover}
