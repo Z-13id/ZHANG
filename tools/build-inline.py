@@ -4,8 +4,11 @@ from PIL import Image
 import io,base64,json,re
 root=Path(__file__).resolve().parents[1]
 previews={}
-for p in sorted((root/'assets/thumbs').glob('*.jpg')):
- im=Image.open(p).convert('RGB');im.thumbnail((280,280));out=io.BytesIO();im.save(out,format='WEBP',quality=40,method=6);raw=out.getvalue();assert raw;Image.open(io.BytesIO(raw)).verify();previews[p.name]='data:image/webp;base64,'+base64.b64encode(raw).decode()
+for p in sorted((root/'assets/thumbs').glob('*.webp')):
+ source=root/'assets'/p.name
+ if not source.is_file():source=root/'assets'/(p.stem+'.jpg')
+ if not source.is_file():source=p
+ im=Image.open(source).convert('RGB');im.thumbnail((280,280));out=io.BytesIO();im.save(out,format='WEBP',quality=40,method=6);raw=out.getvalue();assert raw;Image.open(io.BytesIO(raw)).verify();previews[p.stem+'.jpg']='data:image/webp;base64,'+base64.b64encode(raw).decode()
 script=(root/'script.js').read_text()
 works=json.loads(re.search(r'const works=(\[.*?\]);',script)[1])
 for w in works:

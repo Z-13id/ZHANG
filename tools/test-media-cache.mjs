@@ -1,0 +1,16 @@
+import fs from 'node:fs';
+import vm from 'node:vm';
+import assert from 'node:assert/strict';
+const source=fs.readFileSync(new URL('../script.js',import.meta.url),'utf8');
+const start=source.indexOf('const mediaRequests='),end=source.indexOf('const warmImageQueue=');
+const records=new Map();let downloads=0,failNext=false,emptyNext=false,objectId=0;
+const cache={async match(key){return records.get(key)?.clone()},async put(key,response){records.set(key,response.clone())},async keys(){return [...records.keys()]},async delete(key){return records.delete(key)}};
+const context=vm.createContext({URL:class extends URL{static createObjectURL(){return 'blob:test-'+(++objectId)}static revokeObjectURL(){}},Blob,Response,AbortController,setTimeout,clearTimeout,Date,Map,Error,document:{baseURI:'https://example.test/',querySelector(){return null}},window:{caches:true},caches:{async open(){return cache}},asset:name=>'assets/'+name,retryURL:url=>url+'?retry=1',async fetch(){downloads++;if(failNext){failNext=false;throw Error('offline')}await new Promise(r=>setTimeout(r,5));const size=emptyNext?0:200;emptyNext=false;return new Response(new Uint8Array(size),{headers:{'Content-Type':'image/webp'}})}});
+vm.runInContext(source.slice(start,end)+'\nglobalThis.api={getMediaURL,mediaReady};',context);
+const api=context.api;
+const [a,b]=await Promise.all([api.getMediaURL('first.webp'),api.getMediaURL('first.webp')]);assert.equal(downloads,1);assert.equal(a.url,b.url);
+api.mediaReady.clear();const persistent=await api.getMediaURL('first.webp');assert.equal(persistent.cached,true);assert.equal(downloads,1);
+failNext=true;await assert.rejects(api.getMediaURL('second.webp'));await api.getMediaURL('second.webp');assert.equal(downloads,3);
+await api.getMediaURL('first.webp',true);assert.equal(downloads,4);
+const beforeEmpty=downloads;emptyNext=true;await api.getMediaURL('repaired.webp');assert.equal(downloads,beforeEmpty+2);
+console.log('PASS: empty-response refresh, concurrent deduplication, persistent cache hit, failed-download recovery, explicit refresh');
