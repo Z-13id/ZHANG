@@ -46,3 +46,7 @@ header>.tiny{margin-right:65px}.music-control{position:fixed;right:4%;top:22px;z
 .play-symbol.film-wordmark{font:14px/1 Arial,sans-serif;letter-spacing:3px;top:48%;left:40%}
 .video-status{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;background:#181b18;color:#cdd1ca;font-size:11px;line-height:1.6}
 .video-status[hidden]{display:none}.video-status button{border-bottom:1px solid currentColor;white-space:nowrap;font-size:11px;padding:0 0 2px;color:#fff}
+
+
+/* Avoid a full-screen SVG noise filter composited over every moving frame. */
+.grain{display:none}
